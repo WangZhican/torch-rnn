@@ -143,7 +143,9 @@ function layer:updateOutput(input)
     end
   end
 
-  local bias_expand = self.bias:view(1, 4 * H):expand(N, 4 * H)
+  local bias_expand = self.bias:view(1, 3 * H):expand(N, 3 * H)
+  local bias_ir = bias_expand[{{},{1,2*H}}]
+  local bias_g  = bias_expand[{{},{2*H+1,3*H}}]
   local Wx = self.weight[{{1, D}}]
   local Wh = self.weight[{{D + 1, D + H}}]
 
@@ -151,23 +153,32 @@ function layer:updateOutput(input)
   h:resize(N, T, H):zero()
   c:resize(N, T, H):zero()
   local prev_h, prev_c = h0, c0
-  self.gates:resize(N, T, 4 * H):zero()
+  self.gates:resize(N, T, 3 * H):zero()
   for t = 1, T do
     local cur_x = x[{{}, t}]
     local next_h = h[{{}, t}]
     local next_c = c[{{}, t}]
     local cur_gates = self.gates[{{}, t}]
-    cur_gates:addmm(bias_expand, cur_x, Wx)
-    cur_gates:addmm(prev_h, Wh)
-    cur_gates[{{}, {1, 3 * H}}]:sigmoid()
-    cur_gates[{{}, {3 * H + 1, 4 * H}}]:tanh()
+    cur_gates:[{{}, {1, 2 * H}}]:addmm(bias_ir, cur_x, Wx[{{},{1,2*H}}])
+    cur_gates:[{{}, {1, 2 * H}}]:addmm(prev_h, Wh[{{},{1,2*H}}])
+    cur_gates:[{{}, {1, 2 * H}}]:sigmoid()
+    --cur_gates:[{{}, {2 * H+1,3*H}}]addmm(bias_g, cur_x, Wx[{{},{2*H+1,3*H}}])
+    --cur_gates:[{{}, {2 * H+1,3*H}}]:addmm(prev_h:cmul(r), Wh[{{},{2*H+1,3*H}}])
+    --cur_gates[{{}, {2 * H + 1, 3 * H}}]:tanh()
     local i = cur_gates[{{}, {1, H}}]
-    local f = cur_gates[{{}, {H + 1, 2 * H}}]
-    local o = cur_gates[{{}, {2 * H + 1, 3 * H}}]
-    local g = cur_gates[{{}, {3 * H + 1, 4 * H}}]
-    next_h:cmul(i, g)
-    next_c:cmul(f, prev_c):add(next_h)
-    next_h:tanh(next_c):cmul(o)
+    local r = cur_gates[{{}, {H + 1, 2 * H}}]
+    cur_gates:[{{}, {2 * H+1,3*H}}]:addmm(bias_g, cur_x, Wx[{{},{2*H+1,3*H}}])
+    cur_gates:[{{}, {2 * H+1,3*H}}]:addmm(prev_h:cmul(r), Wh[{{},{2*H+1,3*H}}])
+    cur_gates[{{}, {2 * H + 1, 3 * H}}]:tanh()
+    --local o = cur_gates[{{}, {2 * H + 1, 3 * H}}]
+    local g = cur_gates[{{}, {2 * H + 1, 3 * H}}]
+    --next_h:cmul(i, g)
+    --next_c:cmul(f, prev_c):add(next_h)
+    --next_h:tanh(next_c):cmul(o)
+    --prev_h, prev_c = next_h, next_c
+    next_h:fill(1):add(-1, i):cmul(prev_h)
+    next_h:addcmul(i,g)
+    next_c=next_h
     prev_h, prev_c = next_h, next_c
   end
 
@@ -210,15 +221,15 @@ function layer:backward(input, gradOutput, scale)
     grad_next_h:add(grad_h[{{}, t}])
 
     local i = self.gates[{{}, t, {1, H}}]
-    local f = self.gates[{{}, t, {H + 1, 2 * H}}]
-    local o = self.gates[{{}, t, {2 * H + 1, 3 * H}}]
-    local g = self.gates[{{}, t, {3 * H + 1, 4 * H}}]
+    local r = self.gates[{{}, t, {H + 1, 2 * H}}]
+    local g = self.gates[{{}, t, {2 * H + 1, 3 * H}}]
+    --local g = self.gates[{{}, t, {3 * H + 1, 4 * H}}]
     
-    local grad_a = self.grad_a_buffer:resize(N, 4 * H):zero()
+    local grad_a = self.grad_a_buffer:resize(N, 3 * H):zero()
     local grad_ai = grad_a[{{}, {1, H}}]
-    local grad_af = grad_a[{{}, {H + 1, 2 * H}}]
-    local grad_ao = grad_a[{{}, {2 * H + 1, 3 * H}}]
-    local grad_ag = grad_a[{{}, {3 * H + 1, 4 * H}}]
+    local grad_ar = grad_a[{{}, {H + 1, 2 * H}}]
+    local grad_ag = grad_a[{{}, {2 * H + 1, 3 * H}}]
+    --local grad_ag = grad_a[{{}, {3 * H + 1, 4 * H}}]
     
     -- We will use grad_ai, grad_af, and grad_ao as temporary buffers
     -- to to compute grad_next_c. We will need tanh_next_c (stored in grad_ai)
