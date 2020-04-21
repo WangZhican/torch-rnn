@@ -260,12 +260,14 @@ function layer:backward(input, gradOutput, scale)
     
     grad_x[{{}, t}]:mm(grad_a, Wx:t())
     grad_Wx:addmm(scale, x[{{}, t}]:t(), grad_a)
-    --grad_Wh:addmm(scale, prev_h:t(), grad_a)
+    grad_Wh:addmm(scale, prev_h:t(), grad_ai)
+    grad_Wh:addmm(scale, prev_h:t(), grad_ar)
+    grad_Wh:addmm(scale, prev_h:t(), grad_ag:cmul(r))
     local grad_a_sum = self.buffer3:resize(1, 3 * H):sum(grad_a, 1)
     grad_b:add(scale, grad_a_sum)
-
-    grad_next_h:mm(grad_a, Wh:t())
-    grad_next_c:cmul(f)
+    
+    grad_next_h:fill(1):add(-1, i):cmul(grad_next_h)
+    grad_next_c=grad_next_h
   end
   grad_h0:copy(grad_next_h)
   grad_c0:copy(grad_next_c)
