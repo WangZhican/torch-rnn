@@ -22,18 +22,18 @@ function layer:__init(input_dim, hidden_dim)
   local D, H = input_dim, hidden_dim
   self.input_dim, self.hidden_dim = D, H
 
-  self.weight = torch.Tensor(D + H, 4 * H)
-  self.gradWeight = torch.Tensor(D + H, 4 * H):zero()
-  self.bias = torch.Tensor(4 * H)
-  self.gradBias = torch.Tensor(4 * H):zero()
+  self.weight = torch.Tensor(D + H, 3 * H)
+  self.gradWeight = torch.Tensor(D + H, 3 * H):zero()
+  self.bias = torch.Tensor(3 * H)
+  self.gradBias = torch.Tensor(3 * H):zero()
   self:reset()
 
   self.cell = torch.Tensor()    -- This will be (N, T, H)
-  self.gates = torch.Tensor()   -- This will be (N, T, 4H)
+  self.gates = torch.Tensor()   -- This will be (N, T, 3H)
   self.buffer1 = torch.Tensor() -- This will be (N, H)
   self.buffer2 = torch.Tensor() -- This will be (N, H)
-  self.buffer3 = torch.Tensor() -- This will be (1, 4H)
-  self.grad_a_buffer = torch.Tensor() -- This will be (N, 4H)
+  self.buffer3 = torch.Tensor() -- This will be (1, 3H)
+  self.grad_a_buffer = torch.Tensor() -- This will be (N, 3H)
 
   self.h0 = torch.Tensor()
   self.c0 = torch.Tensor()
@@ -51,7 +51,7 @@ function layer:reset(std)
     std = 1.0 / math.sqrt(self.hidden_dim + self.input_dim)
   end
   self.bias:zero()
-  self.bias[{{self.hidden_dim + 1, 2 * self.hidden_dim}}]:fill(1)
+  self.bias[{{self.hidden_dim + 1, 2 * self.hidden_dim}}]:fill(0)
   self.weight:normal(0, std)
   return self
 end
