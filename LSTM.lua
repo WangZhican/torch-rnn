@@ -305,7 +305,7 @@ function layer:accGradParameters(input, gradOutput, scale)
     self:backward(input, gradOutput, scale)
   end
 end
-
+ 
 
 function layer:__tostring__()
   local name = torch.type(self)
