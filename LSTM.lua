@@ -235,28 +235,33 @@ function layer:backward(input, gradOutput, scale)
     -- to to compute grad_next_c. We will need tanh_next_c (stored in grad_ai)
     -- to compute grad_ao; the other values can be overwritten after we compute
     -- grad_next_c
-    local tanh_next_c = grad_ai:tanh(next_c)
-    local tanh_next_c2 = grad_af:cmul(tanh_next_c, tanh_next_c)
-    local my_grad_next_c = grad_ao
-    my_grad_next_c:fill(1):add(-1, tanh_next_c2):cmul(o):cmul(grad_next_h)
-    grad_next_c:add(my_grad_next_c)
+    --local tanh_next_c = grad_ai:tanh(next_c)
+    --local tanh_next_c2 = grad_af:cmul(tanh_next_c, tanh_next_c)
+    --local my_grad_next_c = grad_ao
+    --my_grad_next_c:fill(1):add(-1, tanh_next_c2):cmul(o):cmul(grad_next_h)
+    --grad_next_c:add(my_grad_next_c)
     
     -- We need tanh_next_c (currently in grad_ai) to compute grad_ao; after
     -- that we can overwrite it.
-    grad_ao:fill(1):add(-1, o):cmul(o):cmul(tanh_next_c):cmul(grad_next_h)
+    --grad_ao:fill(1):add(-1, o):cmul(o):cmul(tanh_next_c):cmul(grad_next_h)
 
     -- Use grad_ai as a temporary buffer for computing grad_ag
     local g2 = grad_ai:cmul(g, g)
-    grad_ag:fill(1):add(-1, g2):cmul(i):cmul(grad_next_c)
+    
+   
 
     -- We don't need any temporary storage for these so do them last
-    grad_ai:fill(1):add(-1, i):cmul(i):cmul(g):cmul(grad_next_c)
-    grad_af:fill(1):add(-1, f):cmul(f):cmul(prev_c):cmul(grad_next_c)
+    local tmp_i=grad_next_h:cmul(g)
+    tmp_i:addcuml(-1,grad_next_h,prev_h)
+    grad_ai:fill(1):add(-1, i):cmul(i):cmul(tmp_i)
+    grad_ag:fill(1):add(-1, g2):cmul(i):cmul(grad_next_h)
+    local tmp_r=torch.mm(grad_ag,Wh:t())
+    grad_ar:fill(1):add(-1, r):cmul(r):cmul(prev_h):cmul(tmp_r)
     
     grad_x[{{}, t}]:mm(grad_a, Wx:t())
     grad_Wx:addmm(scale, x[{{}, t}]:t(), grad_a)
-    grad_Wh:addmm(scale, prev_h:t(), grad_a)
-    local grad_a_sum = self.buffer3:resize(1, 4 * H):sum(grad_a, 1)
+    --grad_Wh:addmm(scale, prev_h:t(), grad_a)
+    local grad_a_sum = self.buffer3:resize(1, 3 * H):sum(grad_a, 1)
     grad_b:add(scale, grad_a_sum)
 
     grad_next_h:mm(grad_a, Wh:t())
