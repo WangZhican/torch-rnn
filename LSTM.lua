@@ -8,9 +8,7 @@ local layer, parent = torch.class('nn.LSTM', 'nn.Module')
 If we add up the sizes of all the tensors for output, gradInput, weights,
 gradWeights, and temporary buffers, we get that a SequenceLSTM stores this many
 scalar values:
-
 NTD + 6NTH + 8NH + 8H^2 + 8DH + 9H
-
 For N = 100, D = 512, T = 100, H = 1024 and with 4 bytes per number, this comes
 out to 305MB. Note that this class doesn't own input or gradOutput, so you'll
 see a bit higher memory usage in practice.
@@ -109,7 +107,6 @@ Input:
 - c0: Initial cell state, (N, H)
 - h0: Initial hidden state, (N, H)
 - x: Input sequence, (N, T, D)
-
 Output:
 - h: Sequence of hidden states, (N, T, H)
 --]]
