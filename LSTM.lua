@@ -2,7 +2,7 @@ require 'torch'
 require 'nn'
 
 
-local layer, parent = torch.class('nn.LSTM', 'nn.Module')
+local layer, parent = torch.class('nn.vanillaLSTM', 'nn.Module')
 
 --[[
 If we add up the sizes of all the tensors for output, gradInput, weights,
@@ -49,7 +49,7 @@ function layer:reset(std)
     std = 1.0 / math.sqrt(self.hidden_dim + self.input_dim)
   end
   self.bias:zero()
-  self.bias[{{self.hidden_dim + 1, 2 * self.hidden_dim}}]:fill(0)
+  self.bias[{{self.hidden_dim + 1, 2 * self.hidden_dim}}]:fill(1)
   self.weight:normal(0, std)
   return self
 end
@@ -156,16 +156,17 @@ function layer:updateOutput(input)
     local next_h = h[{{}, t}]
     local next_c = c[{{}, t}]
     local cur_gates = self.gates[{{}, t}]
-    cur_gates:[{{}, {1, 2 * H}}]:addmm(bias_ir, cur_x, Wx[{{},{1,2*H}}])
-    cur_gates:[{{}, {1, 2 * H}}]:addmm(prev_h, Wh[{{},{1,2*H}}])
-    cur_gates:[{{}, {1, 2 * H}}]:sigmoid()
+    cur_gates[{{}, {1, 2 * H}}]:addmm(bias_ir, cur_x, Wx[{{},{1,2*H}}])
+    cur_gates[{{}, {1, 2 * H}}]:addmm(prev_h, Wh[{{},{1,2*H}}])
+    cur_gates[{{}, {1, 2 * H}}]:sigmoid()
+    
     --cur_gates:[{{}, {2 * H+1,3*H}}]addmm(bias_g, cur_x, Wx[{{},{2*H+1,3*H}}])
     --cur_gates:[{{}, {2 * H+1,3*H}}]:addmm(prev_h:cmul(r), Wh[{{},{2*H+1,3*H}}])
     --cur_gates[{{}, {2 * H + 1, 3 * H}}]:tanh()
     local i = cur_gates[{{}, {1, H}}]
     local r = cur_gates[{{}, {H + 1, 2 * H}}]
-    cur_gates:[{{}, {2 * H+1,3*H}}]:addmm(bias_g, cur_x, Wx[{{},{2*H+1,3*H}}])
-    cur_gates:[{{}, {2 * H+1,3*H}}]:addmm(prev_h:cmul(r), Wh[{{},{2*H+1,3*H}}])
+    cur_gates[{{}, {2 * H+1,3*H}}]:addmm(bias_g, cur_x, Wx[{{},{2*H+1,3*H}}])
+    cur_gates[{{}, {2 * H+1,3*H}}]:addmm(torch.cmul(prev_h,r), Wh[{{},{2*H+1,3*H}}])
     cur_gates[{{}, {2 * H + 1, 3 * H}}]:tanh()
     --local o = cur_gates[{{}, {2 * H + 1, 3 * H}}]
     local g = cur_gates[{{}, {2 * H + 1, 3 * H}}]
@@ -177,6 +178,10 @@ function layer:updateOutput(input)
     next_h:addcmul(i,g)
     next_c=next_h
     prev_h, prev_c = next_h, next_c
+    --[[if t%100==0 then
+      print("next_h",next_h[{{1,2},{1,2}}])
+      print("x",x[{{}, t}][{{1,2},{1,2}}])
+  end]]--
   end
 
   return self.output
@@ -243,27 +248,39 @@ function layer:backward(input, gradOutput, scale)
     --grad_ao:fill(1):add(-1, o):cmul(o):cmul(tanh_next_c):cmul(grad_next_h)
 
     -- Use grad_ai as a temporary buffer for computing grad_ag
-    local g2 = grad_ai:cmul(g, g)
-    
-   
-
     -- We don't need any temporary storage for these so do them last
-    local tmp_i=grad_next_h:cmul(g)
-    tmp_i:addcuml(-1,grad_next_h,prev_h)
+    local tmp_i=torch.cmul(grad_next_h,g)
+    tmp_i:addcmul(-1,grad_next_h,prev_h)
     grad_ai:fill(1):add(-1, i):cmul(i):cmul(tmp_i)
-    grad_ag:fill(1):add(-1, g2):cmul(i):cmul(grad_next_h)
-    local tmp_r=torch.mm(grad_ag,Wh:t())
+    grad_ag:fill(1):add(-1, torch.cmul(g, g)):cmul(i):cmul(grad_next_h)
+    local tmp_r=torch.mm(grad_ag,Wh[{{},{2*H+1,3*H}}]:t())
     grad_ar:fill(1):add(-1, r):cmul(r):cmul(prev_h):cmul(tmp_r)
     
     grad_x[{{}, t}]:mm(grad_a, Wx:t())
+    
     grad_Wx:addmm(scale, x[{{}, t}]:t(), grad_a)
-    grad_Wh:addmm(scale, prev_h:t(), grad_ai)
-    grad_Wh:addmm(scale, prev_h:t(), grad_ar)
-    grad_Wh:addmm(scale, prev_h:t(), grad_ag:cmul(r))
+    grad_Wh[{{},{1,H}}]:addmm(scale, prev_h:t(), grad_ai)
+    grad_Wh[{{},{H+1,2*H}}]:addmm(scale, prev_h:t(), grad_ar)
+    grad_Wh[{{},{2*H+1,3*H}}]:addmm(scale, prev_h:t(), torch.cmul(grad_ag,r))
     local grad_a_sum = self.buffer3:resize(1, 3 * H):sum(grad_a, 1)
     grad_b:add(scale, grad_a_sum)
-    
-    grad_next_h:fill(1):add(-1, i):cmul(grad_next_h)
+    --grad_next_h:mm(grad_a, Wh:t())
+
+    local tmp_h=torch.cmul(1-i,grad_next_h)
+    grad_next_h:fill(0)
+    grad_next_h:add(tmp_h)
+    grad_next_h:add(torch.mm(grad_ai,Wh[{{},{1,H}}]:t()))
+    grad_next_h:add(torch.mm(grad_ar,Wh[{{},{H+1,2*H}}]:t()))
+    grad_next_h:add(torch.mm(torch.cmul(grad_ag,r),Wh[{{},{2*H+1,3*H}}]:t()))
+
+    --[[if t%50==0 then
+      print("###",t)
+      print("grad_next_h",grad_next_h[{{1,2},{1,2}}])
+      print("grad_x",grad_x[{{}, t}][{{1,2},{1,2}}])
+      print("grad_h_",grad_h[{{1,2},t,{1,2}}])
+    end]]--
+    --grad_next_h:addcmul(i,torch.cmul(tmp_r,r))
+    --grad_next_h:addcmul(g,torch.mm(grad_ai,Wh[{{},{1,H}}]:t()))
     grad_next_c=grad_next_h
   end
   grad_h0:copy(grad_next_h)
@@ -279,6 +296,7 @@ function layer:backward(input, gradOutput, scale)
 
   return self.gradInput
 end
+
 
 
 function layer:clearState()
@@ -298,7 +316,7 @@ end
 
 function layer:updateGradInput(input, gradOutput)
   if self.recompute_backward then
-    self:backward(input, gradOutput, 1.0)
+  self:backward(input, gradOutput, 1.0)
   end
   return self.gradInput
 end
