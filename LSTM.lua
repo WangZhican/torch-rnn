@@ -119,8 +119,8 @@ function layer:icir(W_h,W_x,s)
   local row =W_h.size(1)/s
   local colum=W_h.size(2)/s
   self.iweight:zero()
-  local ix=iweight[{{1,D}}]
-  local ih=iweight[{{D+1,D+H}}]
+  local ix=self.iweight[{{1,D}}]
+  local ih=self.iweight[{{D+1,D+H}}]
   for i= 1,row do
     for j=1, colum do
       ih[{{(i-1)*s+1},{(j-1)*s+1,j*s}}]:add(W_h[{{(i-1)*s+1},{(j-1)*s+1,j*s}}])
@@ -186,8 +186,9 @@ function layer:updateOutput(input)
     local next_h = h[{{}, t}]
     local next_c = c[{{}, t}]
     local cur_gates = self.gates[{{}, t}]
-    cur_gates[{{}, {1, 1 * H}}]:addmm(bias_i, cur_x, Wx[{{},{1,1*H}}])
-    cur_gates[{{}, {1, 1 * H}}]:addmm(prev_h, Wh[{{},{1,1*H}}])
+    self:icir(Wh[{{},{1,1*H}}],Wx[{{},{1,1*H}}],32)
+    cur_gates[{{}, {1, 1 * H}}]:addmm(bias_i, cur_x, self.iweight[{{1,D}}])
+    cur_gates[{{}, {1, 1 * H}}]:addmm(prev_h, self.iweight[{{D+1,D+H}}]])
     cur_gates[{{}, {1, 1 * H}}]:sigmoid()
     cur_gates[{{}, {H+1, 2 * H}}]:addmm(bias_r, cur_x, Wx[{{},{H+1,2*H}}])
     cur_gates[{{}, {H+1, 2 * H}}]:addmm(prev_h, Wh[{{},{1+H,2*H}}])
