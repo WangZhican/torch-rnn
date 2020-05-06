@@ -1,5 +1,6 @@
 require 'torch'
 require 'nn'
+require 'cutorch'
 
 
 local layer, parent = torch.class('nn.vanillaLSTM', 'nn.Module')
@@ -21,6 +22,10 @@ function layer:__init(input_dim, hidden_dim)
   self.input_dim, self.hidden_dim = D, H
 
   self.weight = torch.Tensor(D + H, 3 * H)
+  self.iweight=torch.Tensor(D+H,H)
+  self.rweight=torch.Tensor(D+H,H)
+  self.iweight=torch.Tensor(D+H,H)
+  self.gweight=torch.Tensor(D+H,H)
   self.gradWeight = torch.Tensor(D + H, 3 * H):zero()
   self.bias = torch.Tensor(3 * H)
   self.gradBias = torch.Tensor(3 * H):zero()
@@ -110,7 +115,31 @@ Input:
 Output:
 - h: Sequence of hidden states, (N, T, H)
 --]]
-
+function layer:icir(W_h,W_x,s)
+  local row =W_h.size(1)/s
+  local colum=W_h.size(2)/s
+  self.iweight:zero()
+  local ix=iweight[{{1,D}}]
+  local ih=iweight[{{D+1,D+H}}]
+  for i= 1,row do
+    for j=1, colum do
+      ih[{{(i-1)*s+1},{(j-1)*s+1,j*s}}]:add(W_h[{{(i-1)*s+1},{(j-1)*s+1,j*s}}])
+      for k=2,s do
+        ih[{{(i-1)*s+k},{(j-1)*s+1,j*s}}]:add(torch.cat(i_h[{{(i-1)*s+k-1},{j*s}}],i_h[{{(i-1)*s+k-1},{(j-1)*s+1,j*s-1}}]),1)
+      end
+    end
+  end
+  local row =W_x.size(1)/s
+  local colum=W_x.size(2)/s
+  for i= 1,row do
+    for j=1, colum do
+      ix[{{(i-1)*s+1},{(j-1)*s+1,j*s}}]:add(W_x[{{(i-1)*s+1},{(j-1)*s+1,j*s}}])
+      for k=2,s do
+        ix[{{(i-1)*s+k},{(j-1)*s+1,j*s}}]:add(torch.cat(i_x[{{(i-1)*s+k-1},{j*s}}],i_x[{{(i-1)*s+k-1},{(j-1)*s+1,j*s-1}}]),1)
+      end
+    end
+  end
+      
 
 function layer:updateOutput(input)
   self.recompute_backward = true
