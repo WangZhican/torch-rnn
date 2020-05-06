@@ -170,7 +170,8 @@ function layer:updateOutput(input)
   end
 
   local bias_expand = self.bias:view(1, 3 * H):expand(N, 3 * H)
-  local bias_ir = bias_expand[{{},{1,2*H}}]
+  local bias_i = bias_expand[{{},{1,1*H}}]
+  local bias_r = bias_expand[{{},{H+1,2*H}}]
   local bias_g  = bias_expand[{{},{2*H+1,3*H}}]
   local Wx = self.weight[{{1, D}}]
   local Wh = self.weight[{{D + 1, D + H}}]
@@ -185,9 +186,12 @@ function layer:updateOutput(input)
     local next_h = h[{{}, t}]
     local next_c = c[{{}, t}]
     local cur_gates = self.gates[{{}, t}]
-    cur_gates[{{}, {1, 2 * H}}]:addmm(bias_ir, cur_x, Wx[{{},{1,2*H}}])
-    cur_gates[{{}, {1, 2 * H}}]:addmm(prev_h, Wh[{{},{1,2*H}}])
-    cur_gates[{{}, {1, 2 * H}}]:sigmoid()
+    cur_gates[{{}, {1, 1 * H}}]:addmm(bias_i, cur_x, Wx[{{},{1,1*H}}])
+    cur_gates[{{}, {1, 1 * H}}]:addmm(prev_h, Wh[{{},{1,1*H}}])
+    cur_gates[{{}, {1, 1 * H}}]:sigmoid()
+    cur_gates[{{}, {H+1, 2 * H}}]:addmm(bias_r, cur_x, Wx[{{},{H+1,2*H}}])
+    cur_gates[{{}, {H+1, 2 * H}}]:addmm(prev_h, Wh[{{},{1+H,2*H}}])
+    cur_gates[{{}, {H+1, 2 * H}}]:sigmoid()
     
     --cur_gates:[{{}, {2 * H+1,3*H}}]addmm(bias_g, cur_x, Wx[{{},{2*H+1,3*H}}])
     --cur_gates:[{{}, {2 * H+1,3*H}}]:addmm(prev_h:cmul(r), Wh[{{},{2*H+1,3*H}}])
